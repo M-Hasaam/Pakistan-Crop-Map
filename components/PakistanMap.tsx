@@ -27,6 +27,13 @@ export default function PakistanMap() {
       const geoModule = await import("../data/Pakistan_Provices.json");
       const pakistanGeoJSON =
         geoModule.default as FeatureCollection<Geometry, GeoJsonProperties>;
+      const provinceGeometryCollection: GeoJSON.GeometryCollection = {
+        type: "GeometryCollection",
+        geometries: pakistanGeoJSON.features
+          .map((feature) => feature.geometry)
+          .filter((geometry): geometry is GeoJSON.Geometry => Boolean(geometry)),
+      };
+      const provinceBounds = am5map.getGeoBounds(provinceGeometryCollection);
 
       if (!isMounted || !chartRef.current) return;
 
@@ -79,8 +86,8 @@ export default function PakistanMap() {
 
       // Fit the map to Pakistan bounds after polygons are ready
       polygonSeries.events.on("datavalidated", () => {
-        if (polygonSeries.dataItems.length > 0) {
-          polygonSeries.zoomToDataItems(polygonSeries.dataItems, false);
+        if (provinceBounds) {
+          chart.zoomToGeoBounds(provinceBounds, 0);
         }
       });
     };
