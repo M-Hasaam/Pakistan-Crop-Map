@@ -1,0 +1,98 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import * as am5 from "@amcharts/amcharts5";
+import * as am5map from "@amcharts/amcharts5/map";
+import am5themes_Animated from "@amcharts/amcharts5/themes/Animated";
+import type { FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
+
+export default function PakistanMap() {
+  const chartRef = useRef<HTMLDivElement | null>(null);
+  const rootRef = useRef<am5.Root | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const initChart = async () => {
+      const chartElement = chartRef.current;
+      if (!chartElement) return;
+
+      // Dispose any existing root (React Strict Mode can run twice)
+      am5.array.each(am5.registry.rootElements, (existingRoot) => {
+        if (existingRoot.dom === chartElement) {
+          existingRoot.dispose();
+        }
+      });
+
+      const geoModule = await import("../data/Pakistan_Provices.json");
+      const pakistanGeoJSON =
+        geoModule.default as FeatureCollection<Geometry, GeoJsonProperties>;
+
+      if (!isMounted || !chartRef.current) return;
+
+      const root = am5.Root.new(chartRef.current);
+      rootRef.current = root;
+
+      root.setThemes([am5themes_Animated.new(root)]);
+
+      const chart = root.container.children.push(
+        am5map.MapChart.new(root, {
+          panX: "none",
+          panY: "none",
+          wheelX: "none",
+          wheelY: "none",
+          projection: am5map.geoMercator(),
+        })
+      );
+
+      const polygonSeries = chart.series.push(
+        am5map.MapPolygonSeries.new(root, {
+          geoJSON: pakistanGeoJSON,
+          reverseGeodata: true,
+        })
+      );
+
+      // Polygon styling
+      polygonSeries.mapPolygons.template.setAll({
+        fill: am5.color(0x74b266),
+        stroke: am5.color(0xffffff),
+        strokeWidth: 1,
+        tooltipText: "{name}",
+        interactive: true,
+        cursorOverStyle: "pointer",
+      });
+
+      polygonSeries.mapPolygons.template.states.create("hover", {
+        fill: am5.color(0x5e9454),
+      });
+
+      polygonSeries.mapPolygons.template.events.on("click", (ev) => {
+        const data = ev.target.dataItem?.dataContext as
+          | { properties?: { name?: string; name_en?: string } }
+          | undefined;
+
+        const provinceName =
+          data?.properties?.name_en ?? data?.properties?.name ?? "Unknown province";
+
+        console.log("Province clicked:", provinceName);
+      });
+
+      // Fit the map to Pakistan bounds after polygons are ready
+      polygonSeries.events.on("datavalidated", () => {
+        if (polygonSeries.dataItems.length > 0) {
+          polygonSeries.zoomToDataItems(polygonSeries.dataItems, false);
+        }
+      });
+    };
+
+    initChart().catch(console.error);
+
+    return () => {
+      isMounted = false;
+      rootRef.current?.dispose();
+      rootRef.current = null;
+    };
+  }, []);
+
+  return <div ref={chartRef} className="w-full min-h-[420px] md:min-h-[520px]" />;
+}
