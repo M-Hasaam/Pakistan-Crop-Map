@@ -24,19 +24,62 @@ export default function PakistanMap() {
         }
       });
 
-      const geoModule = await import("../data/Pakistan_Provices.json");
       const districtsModule = await import("../data/Pakistan_Districts.json");
-      const pakistanGeoJSON =
-        geoModule.default as FeatureCollection<Geometry, GeoJsonProperties>;
-      const districtsGeoJSON =
+      const rawDistrictsGeoJSON =
         districtsModule.default as FeatureCollection<Geometry, GeoJsonProperties>;
-      const provinceGeometryCollection: GeoJSON.GeometryCollection = {
-        type: "GeometryCollection",
-        geometries: pakistanGeoJSON.features
-          .map((feature) => feature.geometry)
-          .filter((geometry): geometry is GeoJSON.Geometry => Boolean(geometry)),
+      const districtsGeoJSON: FeatureCollection<Geometry, GeoJsonProperties> = {
+        type: "FeatureCollection",
+        features: rawDistrictsGeoJSON.features.map((feature, index) => {
+          const props = feature.properties ?? {};
+          const nameEn =
+            (typeof props.name_en === "string" && props.name_en) ||
+            (typeof props.name === "string" && props.name) ||
+            `District-${index + 1}`;
+
+          return {
+            ...feature,
+            id: String(nameEn),
+            properties: {
+              ...props,
+              name: nameEn,
+              name_en: nameEn,
+            },
+          };
+        }),
       };
-      const provinceBounds = am5map.getGeoBounds(provinceGeometryCollection);
+
+      const districtBounds = districtsGeoJSON.features.reduce(
+        (acc, feature) => {
+          const geometry = feature.geometry;
+          if (!geometry) return acc;
+
+          const polygons =
+            geometry.type === "Polygon"
+              ? [geometry.coordinates]
+              : geometry.type === "MultiPolygon"
+                ? geometry.coordinates
+                : [];
+
+          polygons.forEach((polygon) => {
+            polygon.forEach((ring) => {
+              ring.forEach(([longitude, latitude]) => {
+                acc.left = Math.min(acc.left, longitude);
+                acc.right = Math.max(acc.right, longitude);
+                acc.bottom = Math.min(acc.bottom, latitude);
+                acc.top = Math.max(acc.top, latitude);
+              });
+            });
+          });
+
+          return acc;
+        },
+        {
+          left: Number.POSITIVE_INFINITY,
+          right: Number.NEGATIVE_INFINITY,
+          top: Number.NEGATIVE_INFINITY,
+          bottom: Number.POSITIVE_INFINITY,
+        }
+      );
 
       if (!isMounted || !chartRef.current) return;
 
@@ -51,45 +94,29 @@ export default function PakistanMap() {
           panY: "none",
           wheelX: "none",
           wheelY: "none",
+          maxPanOut: 0,
+          homeGeoPoint: { longitude: 69.35, latitude: 30.4 },
+          homeZoomLevel: 1,
+          minZoomLevel: 1,
+          maxZoomLevel: 32,
           projection: am5map.geoMercator(),
-        })
-      );
-
-      const polygonSeries = chart.series.push(
-        am5map.MapPolygonSeries.new(root, {
-          geoJSON: pakistanGeoJSON,
-          reverseGeodata: true,
         })
       );
 
       const districtSeries = chart.series.push(
         am5map.MapPolygonSeries.new(root, {
           geoJSON: districtsGeoJSON,
-          reverseGeodata: true,
-          affectsBounds: false,
+          interactive: true,
         })
       );
 
-      // Polygon styling
-      polygonSeries.mapPolygons.template.setAll({
-        fill: am5.color(0x74b266),
-        stroke: am5.color(0xffffff),
-        strokeWidth: 1,
-        tooltipText: "{name}",
-        interactive: true,
-        cursorOverStyle: "pointer",
-      });
-
-      polygonSeries.mapPolygons.template.states.create("hover", {
-        fill: am5.color(0x5e9454),
-      });
-
       districtSeries.mapPolygons.template.setAll({
-        fill: am5.color(0x000000),
-        fillOpacity: 0,
-        stroke: am5.color(0xffffff),
-        strokeOpacity: 0.75,
-        strokeWidth: 0.6,
+        fill: am5.color(0x74b266),
+        // Keep interior hit-testing reliable without visibly flood-filling the canvas.
+        fillOpacity: 0.001,
+        stroke: am5.color(0x2f6b2e),
+        strokeOpacity: 0.95,
+        strokeWidth: 1,
         tooltipText: "{name}",
         interactive: true,
         cursorOverStyle: "pointer",
@@ -97,40 +124,57 @@ export default function PakistanMap() {
 
       districtSeries.mapPolygons.template.states.create("hover", {
         fill: am5.color(0x5e9454),
-        fillOpacity: 0.2,
-        stroke: am5.color(0xffffff),
+        fillOpacity: 0.45,
+        stroke: am5.color(0x1f4f1e),
         strokeOpacity: 1,
-        strokeWidth: 0.9,
+        strokeWidth: 1.2,
       });
 
-      polygonSeries.mapPolygons.template.events.on("click", (ev) => {
-        const data = ev.target.dataItem?.dataContext as
-          | { properties?: { name?: string; name_en?: string } }
-          | undefined;
-
-        const provinceName =
-          data?.properties?.name_en ?? data?.properties?.name ?? "Unknown province";
-
-        console.log("Province clicked:", provinceName);
+      districtSeries.mapPolygons.template.states.create("active", {
+        fill: am5.color(0x3f7f3d),
+        fillOpacity: 0.62,
+        stroke: am5.color(0x173c16),
+        strokeOpacity: 1,
+        strokeWidth: 1.35,
       });
 
       districtSeries.mapPolygons.template.events.on("click", (ev) => {
-        const data = ev.target.dataItem?.dataContext as
-          | { properties?: { name?: string; name_en?: string } }
+        districtSeries.mapPolygons.each((polygon) => {
+          polygon.set("active", false);
+        });
+        ev.target.set("active", true);
+
+        const dataItem = ev.target.dataItem as
+          | {
+            dataContext?: {
+              name?: string;
+              name_en?: string;
+              properties?: { name?: string; name_en?: string };
+            };
+          }
           | undefined;
 
         const districtName =
-          data?.properties?.name_en ?? data?.properties?.name ?? "Unknown district";
+          dataItem?.dataContext?.name ??
+          dataItem?.dataContext?.name_en ??
+          dataItem?.dataContext?.properties?.name ??
+          dataItem?.dataContext?.properties?.name_en ??
+          "Unknown district";
 
         console.log("District clicked:", districtName);
       });
 
-      // Fit the map to Pakistan bounds after polygons are ready
-      polygonSeries.events.on("datavalidated", () => {
-        if (provinceBounds) {
-          chart.zoomToGeoBounds(provinceBounds, 0);
-        }
-      });
+      const fitToPakistan = () => {
+        if (!isMounted) return;
+
+        chart.zoomToGeoBounds(districtBounds, 0);
+      };
+
+      // Ensure fit runs regardless of validation/render timing order.
+      districtSeries.events.on("datavalidated", fitToPakistan);
+      setTimeout(fitToPakistan, 0);
+      setTimeout(fitToPakistan, 120);
+      setTimeout(fitToPakistan, 400);
     };
 
     initChart().catch(console.error);
