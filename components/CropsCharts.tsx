@@ -59,6 +59,35 @@ export default function CropsCharts({ themeMode = "light", province, district, r
         };
     }, [chartRows]);
 
+    const topFive = useMemo(() => {
+        const positive = chartRows.filter((item) => item.value > 0).slice(0, 5);
+        const max = positive[0]?.value || 1;
+        return positive.map((item) => ({
+            ...item,
+            ratio: (item.value / max) * 100,
+        }));
+    }, [chartRows]);
+
+    const exportCsv = () => {
+        if (!record || !district || !province) return;
+        const rows = ["District,Province,Year,Crop,Value"];
+        for (const [crop, raw] of Object.entries(record)) {
+            if (crop === "Year") continue;
+            const value = typeof raw === "number" ? raw : "";
+            rows.push(`${district},${province},${record.Year},${crop},${value}`);
+        }
+
+        const blob = new Blob([rows.join("\n")], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${district.replace(/\s+/g, "_")}_${record.Year}_crops.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
     useEffect(() => {
         const barElement = barRef.current;
         const pieElement = pieRef.current;
@@ -267,6 +296,19 @@ export default function CropsCharts({ themeMode = "light", province, district, r
 
             {district && province && record ? (
                 <>
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-xs text-[var(--muted)]">
+                            Extra tools: quick export + ranked crops summary.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={exportCsv}
+                            className="rounded-lg border border-[var(--brand)] bg-[var(--brand)] px-3 py-1.5 text-xs font-semibold text-[var(--surface-strong)]"
+                        >
+                            Export CSV
+                        </button>
+                    </div>
+
                     <div className="kpi-grid mb-4">
                         <article className="kpi-card">
                             <p className="soft-label">Total Crop Value</p>
@@ -280,6 +322,30 @@ export default function CropsCharts({ themeMode = "light", province, district, r
                             <p className="soft-label">Crops With Values</p>
                             <p className="kpi-value">{summary.availableCrops}</p>
                         </article>
+                    </div>
+
+                    <div className="mb-4 rounded-xl border border-[var(--line)] bg-[var(--surface)] p-3">
+                        <h3 className="mb-2 text-sm font-semibold text-[var(--foreground)]">Top 5 Crops</h3>
+                        {topFive.length ? (
+                            <div className="space-y-2">
+                                {topFive.map((crop) => (
+                                    <div key={crop.crop} className="space-y-1">
+                                        <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                                            <span>{crop.crop}</span>
+                                            <span>{numFmt.format(crop.value)}</span>
+                                        </div>
+                                        <div className="h-2 rounded-full bg-[var(--line)]/55">
+                                            <div
+                                                className="h-2 rounded-full bg-[var(--brand)]"
+                                                style={{ width: `${crop.ratio}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <p className="text-xs text-[var(--muted)]">No positive crop values available.</p>
+                        )}
                     </div>
 
                     <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">

@@ -29,6 +29,7 @@ const dataset = cropsData as CropsDataset;
 
 export default function Home() {
   const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
+  const [quickDistrict, setQuickDistrict] = useState("");
   const [selection, setSelection] = useState<DistrictSelection>({
     province: null,
     district: null,
@@ -70,6 +71,32 @@ export default function Home() {
       ([key, value]) => key !== "Year" && typeof value === "number" && Number.isFinite(value)
     );
   }, [districtRecord]);
+
+  const districtOptions = useMemo(() => {
+    const out: Array<{ province: DistrictSelection["province"]; district: string; id: string }> = [];
+    for (const province of Object.keys(dataset.Districts) as Array<DistrictSelection["province"]>) {
+      for (const district of Object.keys(dataset.Districts[province])) {
+        out.push({ province, district, id: `${province}::${district}` });
+      }
+    }
+    return out.sort((a, b) => a.district.localeCompare(b.district));
+  }, []);
+
+  const provinceTotals = useMemo(() => {
+    const entries = Object.entries(dataset.ProvinceTotals)
+      .filter(([name]) => name !== "Pakistan")
+      .map(([name, value]) => ({ name, value }));
+    const max = Math.max(...entries.map((x) => x.value), 1);
+    return entries
+      .sort((a, b) => b.value - a.value)
+      .map((entry) => ({ ...entry, ratio: (entry.value / max) * 100 }));
+  }, []);
+
+  const applyQuickDistrict = () => {
+    const match = districtOptions.find((item) => item.id === quickDistrict);
+    if (!match) return;
+    setSelection({ province: match.province, district: match.district });
+  };
 
   return (
     <main className="shell space-y-5">
@@ -140,6 +167,53 @@ export default function Home() {
           <article className="kpi-card">
             <p className="soft-label">Selection Data</p>
             <p className="kpi-value">{hasSelectionData ? "Available" : "Waiting"}</p>
+          </article>
+        </div>
+
+        <div className="mt-5 grid grid-cols-1 gap-4 xl:grid-cols-2">
+          <article className="kpi-card space-y-3">
+            <p className="soft-label">Quick District Selector</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                className="min-w-[260px] flex-1 rounded-lg border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)]"
+                value={quickDistrict}
+                onChange={(e) => setQuickDistrict(e.target.value)}
+              >
+                <option value="">Choose district...</option>
+                {districtOptions.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.district} ({opt.province})
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="rounded-lg border border-[var(--brand)] bg-[var(--brand)] px-3 py-2 text-sm font-semibold text-[var(--surface-strong)]"
+                onClick={applyQuickDistrict}
+              >
+                Show Data
+              </button>
+            </div>
+          </article>
+
+          <article className="kpi-card space-y-3">
+            <p className="soft-label">Province Totals Snapshot</p>
+            <div className="space-y-2">
+              {provinceTotals.map((p) => (
+                <div key={p.name} className="space-y-1">
+                  <div className="flex items-center justify-between text-xs text-[var(--muted)]">
+                    <span>{p.name}</span>
+                    <span>{p.value.toLocaleString("en-PK")}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-[var(--line)]/55">
+                    <div
+                      className="h-2 rounded-full bg-[var(--brand)]"
+                      style={{ width: `${p.ratio}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
           </article>
         </div>
       </header>
