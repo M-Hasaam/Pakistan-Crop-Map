@@ -6,6 +6,15 @@ import * as am5map from "@amcharts/amcharts5/map";
 import am5themes_Animated from "@amcharts/amcharts5/themes/Animated";
 import type { FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
 
+type DistrictSelection = {
+  province: "Punjab" | "Sindh" | "KPK" | "Balochistan" | null;
+  district: string | null;
+};
+
+type PakistanMapProps = {
+  onDistrictSelect?: (selection: DistrictSelection) => void;
+};
+
 type MapFeature = {
   id?: string | number;
   properties?: GeoJsonProperties;
@@ -130,6 +139,17 @@ function featureName(feature: MapFeature, fallback: string): string {
   return nameEn || name || fallback;
 }
 
+function normalizeProvinceNameForData(
+  provinceName: string
+): "Punjab" | "Sindh" | "KPK" | "Balochistan" | null {
+  const value = provinceName.trim().toLowerCase();
+  if (value === "punjab") return "Punjab";
+  if (value === "sindh") return "Sindh";
+  if (value === "balochistan") return "Balochistan";
+  if (value === "khyber pakhtunkhwa" || value === "federally administered tribal areas") return "KPK";
+  return null;
+}
+
 type GeoBounds = {
   left: number;
   right: number;
@@ -181,12 +201,17 @@ function districtsInsideProvince(
   });
 }
 
-export default function PakistanMap() {
+export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<am5.Root | null>(null);
   const resetViewRef = useRef<(() => void) | null>(null);
+  const onDistrictSelectRef = useRef(onDistrictSelect);
   const [selectedProvince, setSelectedProvince] = useState("None");
   const [selectedDistrict, setSelectedDistrict] = useState("None");
+
+  useEffect(() => {
+    onDistrictSelectRef.current = onDistrictSelect;
+  }, [onDistrictSelect]);
 
   useEffect(() => {
     let isMounted = true;
@@ -326,6 +351,7 @@ export default function PakistanMap() {
 
       let hoveredDistrict: string | null = null;
       let activeDistrict: string | null = null;
+      let activeProvinceKey: DistrictSelection["province"] = null;
       let isProvinceDrilled = false;
       let visibleDistrictFeatures: DistrictFeature[] = [];
 
@@ -369,9 +395,11 @@ export default function PakistanMap() {
       const setNationalMode = () => {
         isProvinceDrilled = false;
         activeDistrict = null;
+        activeProvinceKey = null;
         hoveredDistrict = null;
         setSelectedProvince("None");
         setSelectedDistrict("None");
+        onDistrictSelectRef.current?.({ province: null, district: null });
         visibleDistrictFeatures = [];
         provinceSeries.set("geoJSON", provincesGeoJSON);
         districtSeries.set("geoJSON", emptyGeoJSON);
@@ -383,11 +411,14 @@ export default function PakistanMap() {
       const setProvinceMode = (province: ProvinceFeature) => {
         isProvinceDrilled = true;
         const provinceDistricts = districtsInsideProvince(districtFeatures, province);
+        const provinceName = featureName(province, "Unknown province");
 
         activeDistrict = null;
         hoveredDistrict = null;
+        activeProvinceKey = normalizeProvinceNameForData(provinceName);
         setSelectedDistrict("None");
-        setSelectedProvince(featureName(province, "Unknown province"));
+        setSelectedProvince(provinceName);
+        onDistrictSelectRef.current?.({ province: activeProvinceKey, district: null });
         visibleDistrictFeatures = provinceDistricts;
 
         provinceSeries.set("geoJSON", emptyGeoJSON);
@@ -434,6 +465,10 @@ export default function PakistanMap() {
         const districtName = featureName(selectedDistrict, "Unknown district");
         activeDistrict = districtName;
         setSelectedDistrict(districtName);
+        onDistrictSelectRef.current?.({
+          province: activeProvinceKey,
+          district: districtName,
+        });
         activeSeries.set("geoJSON", toFeatureCollection([selectedDistrict]));
         if (hoveredDistrict === districtName) {
           hoverSeries.set("geoJSON", emptyGeoJSON);
