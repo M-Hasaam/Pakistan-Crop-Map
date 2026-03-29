@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import * as am5 from "@amcharts/amcharts5";
 import * as am5map from "@amcharts/amcharts5/map";
 import am5themes_Animated from "@amcharts/amcharts5/themes/Animated";
@@ -48,6 +48,7 @@ function pointInDistrict(point: [number, number], feature: DistrictFeature): boo
 export default function PakistanMap() {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<am5.Root | null>(null);
+  const [selectedDistrict, setSelectedDistrict] = useState("None");
 
   useEffect(() => {
     let isMounted = true;
@@ -87,39 +88,10 @@ export default function PakistanMap() {
           };
         }),
       };
-
-      const districtBounds = districtsGeoJSON.features.reduce(
-        (acc, feature) => {
-          const geometry = feature.geometry;
-          if (!geometry) return acc;
-
-          const polygons =
-            geometry.type === "Polygon"
-              ? [geometry.coordinates]
-              : geometry.type === "MultiPolygon"
-                ? geometry.coordinates
-                : [];
-
-          polygons.forEach((polygon) => {
-            polygon.forEach((ring) => {
-              ring.forEach(([longitude, latitude]) => {
-                acc.left = Math.min(acc.left, longitude);
-                acc.right = Math.max(acc.right, longitude);
-                acc.bottom = Math.min(acc.bottom, latitude);
-                acc.top = Math.max(acc.top, latitude);
-              });
-            });
-          });
-
-          return acc;
-        },
-        {
-          left: Number.POSITIVE_INFINITY,
-          right: Number.NEGATIVE_INFINITY,
-          top: Number.NEGATIVE_INFINITY,
-          bottom: Number.POSITIVE_INFINITY,
-        }
-      );
+      const emptyGeoJSON: FeatureCollection<Geometry, GeoJsonProperties> = {
+        type: "FeatureCollection",
+        features: [],
+      };
 
       if (!isMounted || !chartRef.current) return;
 
@@ -136,102 +108,129 @@ export default function PakistanMap() {
           wheelY: "none",
           maxPanOut: 0,
           homeGeoPoint: { longitude: 69.35, latitude: 30.4 },
-          homeZoomLevel: 1,
-          minZoomLevel: 1,
+          homeZoomLevel: 11,
+          minZoomLevel: 4,
           maxZoomLevel: 32,
           projection: am5map.geoMercator(),
+        })
+      );
+
+      chart.chartContainer.set(
+        "background",
+        am5.Rectangle.new(root, {
+          fill: am5.color(0x000000),
+          fillOpacity: 1,
         })
       );
 
       const districtSeries = chart.series.push(
         am5map.MapPolygonSeries.new(root, {
           geoJSON: districtsGeoJSON,
-          interactive: true,
+          interactive: false,
         })
       );
-      const polygonByDistrict = new Map<string, am5map.MapPolygon>();
+
+      const hoverSeries = chart.series.push(
+        am5map.MapPolygonSeries.new(root, {
+          geoJSON: emptyGeoJSON,
+          interactive: false,
+        })
+      );
+
+      const activeSeries = chart.series.push(
+        am5map.MapPolygonSeries.new(root, {
+          geoJSON: emptyGeoJSON,
+          interactive: false,
+        })
+      );
+
+      let hoveredDistrict: string | null = null;
+      let activeDistrict: string | null = null;
 
       districtSeries.mapPolygons.template.setAll({
-        fill: am5.color(0x74b266),
-        // Keep interior hit-testing reliable without visibly flood-filling the canvas.
-        fillOpacity: 0.001,
-        stroke: am5.color(0x2f6b2e),
+        fill: am5.color(0x111111),
+        fillOpacity: 0,
+        stroke: am5.color(0x9de0ae),
         strokeOpacity: 0.95,
         strokeWidth: 1,
-        tooltipText: "{name}",
-        interactive: true,
-        cursorOverStyle: "pointer",
+        tooltipText: "",
+        interactive: false,
       });
 
-      districtSeries.mapPolygons.template.states.create("hover", {
-        fill: am5.color(0x5e9454),
-        fillOpacity: 0.45,
-        stroke: am5.color(0x1f4f1e),
-        strokeOpacity: 1,
-        strokeWidth: 1.2,
+      hoverSeries.mapPolygons.template.setAll({
+        fill: am5.color(0xb7f5a7),
+        fillOpacity: 0,
+        stroke: am5.color(0xb7f5a7),
+        strokeOpacity: 0.95,
+        strokeWidth: 1.8,
+        interactive: false,
       });
 
-      districtSeries.mapPolygons.template.states.create("active", {
-        fill: am5.color(0x3f7f3d),
-        fillOpacity: 0.62,
-        stroke: am5.color(0x173c16),
-        strokeOpacity: 1,
-        strokeWidth: 1.35,
+      activeSeries.mapPolygons.template.setAll({
+        fill: am5.color(0x2563eb),
+        fillOpacity: 0.92,
+        stroke: am5.color(0x9de0ae),
+        strokeOpacity: 0.95,
+        strokeWidth: 1,
+        interactive: false,
       });
 
-      districtSeries.events.on("datavalidated", () => {
-        polygonByDistrict.clear();
-        districtSeries.mapPolygons.each((polygon) => {
-          const dataItem = polygon.dataItem as
-            | {
-              dataContext?: {
-                name?: string;
-                name_en?: string;
-                properties?: { name?: string; name_en?: string };
-              };
-            }
-            | undefined;
+      const findDistrictAtPoint = (ev: { point: am5.IPoint }) => {
+        const localPoint = chart.seriesContainer.toLocal(ev.point);
+        const geoPoint = chart.invert(localPoint);
+        if (!Number.isFinite(geoPoint.longitude) || !Number.isFinite(geoPoint.latitude)) {
+          return null;
+        }
 
-          const districtName =
-            dataItem?.dataContext?.name ??
-            dataItem?.dataContext?.name_en ??
-            dataItem?.dataContext?.properties?.name ??
-            dataItem?.dataContext?.properties?.name_en ??
-            "";
+        const clickPoint: [number, number] = [geoPoint.longitude, geoPoint.latitude];
+        return (districtsGeoJSON.features as DistrictFeature[]).find((feature) =>
+          pointInDistrict(clickPoint, feature)
+        );
+      };
 
-          if (districtName) {
-            polygonByDistrict.set(districtName, polygon);
-          }
-        });
+      const asGeoJson = (feature: DistrictFeature | null): FeatureCollection<Geometry, GeoJsonProperties> => ({
+        type: "FeatureCollection",
+        features: feature ? [{ type: "Feature", properties: feature.properties ?? {}, geometry: feature.geometry }] : [],
       });
 
       chart.chartContainer.events.on("click", (ev) => {
-        const localPoint = chart.seriesContainer.toLocal(ev.point);
-        const geoPoint = chart.invert(localPoint);
-        const clickPoint: [number, number] = [geoPoint.longitude, geoPoint.latitude];
-
-        const selected = (districtsGeoJSON.features as DistrictFeature[]).find((feature) =>
-          pointInDistrict(clickPoint, feature)
-        );
+        const selected = findDistrictAtPoint(ev);
 
         if (!selected) return;
 
         const districtName =
           selected.properties?.name_en ?? selected.properties?.name ?? "Unknown district";
 
-        districtSeries.mapPolygons.each((polygon) => {
-          polygon.set("active", false);
-        });
-        polygonByDistrict.get(districtName)?.set("active", true);
+        activeDistrict = districtName;
+        activeSeries.set("geoJSON", asGeoJson(selected));
+        if (hoveredDistrict === districtName) {
+          hoverSeries.set("geoJSON", emptyGeoJSON);
+        }
+        setSelectedDistrict(districtName);
 
         console.log("District clicked:", districtName);
+      });
+
+      chart.chartContainer.events.on("globalpointermove", (ev) => {
+        const hovered = findDistrictAtPoint(ev);
+        const districtName = hovered?.properties?.name_en ?? hovered?.properties?.name ?? null;
+        if (districtName === hoveredDistrict || districtName === activeDistrict) return;
+
+        hoveredDistrict = districtName;
+        hoverSeries.set("geoJSON", asGeoJson(hovered ?? null));
+      });
+
+      chart.chartContainer.events.on("pointerout", () => {
+        hoveredDistrict = null;
+        hoverSeries.set("geoJSON", emptyGeoJSON);
       });
 
       const fitToPakistan = () => {
         if (!isMounted || hasFitted) return;
         hasFitted = true;
 
-        chart.zoomToGeoBounds(districtBounds, 0);
+        chart.goHome(0);
+        chart.zoomToGeoPoint({ longitude: 69.35, latitude: 30.4 }, 11, true, 0);
       };
 
       // Fit once after data validation; repeated calls can over-zoom.
@@ -247,5 +246,13 @@ export default function PakistanMap() {
     };
   }, []);
 
-  return <div ref={chartRef} className="w-full min-h-[420px] md:min-h-[520px]" />;
+  return (
+    <div className="space-y-3">
+      <div className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900 px-3 py-2 text-sm text-slate-100">
+        <span className="font-semibold">Selected district:</span>
+        <span>{selectedDistrict}</span>
+      </div>
+      <div ref={chartRef} className="w-full min-h-[420px] md:min-h-[520px] rounded-md overflow-hidden" />
+    </div>
+  );
 }
