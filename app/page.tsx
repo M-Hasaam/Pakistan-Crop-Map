@@ -25,6 +25,8 @@ type DistrictSelection = {
   district: string | null;
 };
 
+type ProvinceKey = Exclude<DistrictSelection["province"], null>;
+
 const dataset = cropsData as CropsDataset;
 
 export default function Home() {
@@ -73,8 +75,8 @@ export default function Home() {
   }, [districtRecord]);
 
   const districtOptions = useMemo(() => {
-    const out: Array<{ province: DistrictSelection["province"]; district: string; id: string }> = [];
-    for (const province of Object.keys(dataset.Districts) as Array<DistrictSelection["province"]>) {
+    const out: Array<{ province: ProvinceKey; district: string; id: string }> = [];
+    for (const province of Object.keys(dataset.Districts) as Array<ProvinceKey>) {
       for (const district of Object.keys(dataset.Districts[province])) {
         out.push({ province, district, id: `${province}::${district}` });
       }

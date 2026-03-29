@@ -24,13 +24,6 @@
   --muted: #b2c2b8;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-ui);
-  --font-mono: var(--font-ui);
-}
-
 body {
   background: var(--background);
   color: var(--foreground);
