@@ -16,6 +16,9 @@ const fraunces = Fraunces({
 export const metadata: Metadata = {
   title: "Pakistan Crops Explorer",
   description: "District-level crop insights across Pakistan.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export default function RootLayout({

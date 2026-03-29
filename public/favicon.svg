@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <!-- Background circle -->
+  <circle cx="96" cy="96" r="96" fill="#2f7d4f"/>
+  
+  <!-- Map pin outline -->
+  <path d="M96 20C75.9 20 60 35.9 60 56c0 20 36 90 36 90s36-70 36-90c0-20.1-15.9-36-36-36z" fill="#ffffff" opacity="0.95"/>
+  
+  <!-- Center dot -->
+  <circle cx="96" cy="56" r="12" fill="#2f7d4f"/>
+  
+  <!-- Leaf accent -->
+  <g transform="translate(96, 140)">
+    <ellipse cx="0" cy="-8" rx="6" ry="10" fill="#c78c3a" transform="rotate(-30)"/>
+    <ellipse cx="0" cy="-8" rx="6" ry="10" fill="#c78c3a" transform="rotate(30)"/>
+  </g>
+</svg>
