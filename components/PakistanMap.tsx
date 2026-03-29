@@ -136,6 +136,22 @@ export default function PakistanMap() {
           };
         }),
       };
+      const districtGeometryCollection: GeoJSON.GeometryCollection = {
+        type: "GeometryCollection",
+        geometries: districtsGeoJSON.features
+          .map((feature) => feature.geometry)
+          .filter((geometry): geometry is GeoJSON.Geometry => Boolean(geometry)),
+      };
+      const districtBounds = am5map.getGeoBounds(districtGeometryCollection);
+      const districtBoundsWidth = districtBounds.right - districtBounds.left;
+      const districtBoundsHeight = districtBounds.top - districtBounds.bottom;
+      const boundsPaddingRatio = 0.18;
+      const paddedDistrictBounds = {
+        left: districtBounds.left - districtBoundsWidth * boundsPaddingRatio,
+        right: districtBounds.right + districtBoundsWidth * boundsPaddingRatio,
+        top: districtBounds.top + districtBoundsHeight * boundsPaddingRatio,
+        bottom: districtBounds.bottom - districtBoundsHeight * boundsPaddingRatio,
+      };
       const emptyGeoJSON: FeatureCollection<Geometry, GeoJsonProperties> = {
         type: "FeatureCollection",
         features: [],
@@ -156,8 +172,8 @@ export default function PakistanMap() {
           wheelY: "none",
           maxPanOut: 0,
           homeGeoPoint: { longitude: 69.35, latitude: 30.4 },
-          homeZoomLevel: 11,
-          minZoomLevel: 4,
+          homeZoomLevel: 1,
+          minZoomLevel: 0.5,
           maxZoomLevel: 32,
           projection: am5map.geoMercator(),
         })
@@ -277,8 +293,7 @@ export default function PakistanMap() {
         if (!isMounted || hasFitted) return;
         hasFitted = true;
 
-        chart.goHome(0);
-        chart.zoomToGeoPoint({ longitude: 69.35, latitude: 30.4 }, 11, true, 0);
+        chart.zoomToGeoBounds(paddedDistrictBounds, 0);
       };
 
       // Fit once after data validation; repeated calls can over-zoom.
@@ -300,7 +315,7 @@ export default function PakistanMap() {
         <span className="font-semibold">Selected district:</span>
         <span>{selectedDistrict}</span>
       </div>
-      <div ref={chartRef} className="w-full min-h-[420px] md:min-h-[520px] rounded-md overflow-hidden" />
+      <div ref={chartRef} className="w-full min-h-[560px] md:min-h-[700px] rounded-md overflow-hidden" />
     </div>
   );
 }
