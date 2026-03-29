@@ -316,7 +316,7 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
       chart.chartContainer.set(
         "background",
         am5.Rectangle.new(root, {
-          fill: am5.color(0x000000),
+          fill: am5.color(0xf6f3e7),
           fillOpacity: 1,
         })
       );
@@ -358,37 +358,37 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
       provinceSeries.mapPolygons.template.setAll({
         fill: am5.color(0x000000),
         fillOpacity: 0,
-        stroke: am5.color(0x9de0ae),
+        stroke: am5.color(0x3f7b56),
         strokeOpacity: 0.95,
-        strokeWidth: 1.1,
+        strokeWidth: 1.2,
         interactive: true,
       });
 
       districtSeries.mapPolygons.template.setAll({
-        fill: am5.color(0x111111),
+        fill: am5.color(0x000000),
         fillOpacity: 0,
-        stroke: am5.color(0x9de0ae),
-        strokeOpacity: 0.95,
-        strokeWidth: 0.55,
+        stroke: am5.color(0x4a8961),
+        strokeOpacity: 0.85,
+        strokeWidth: 0.65,
         tooltipText: "",
         interactive: true,
       });
 
       hoverSeries.mapPolygons.template.setAll({
-        fill: am5.color(0xb7f5a7),
-        fillOpacity: 0,
-        stroke: am5.color(0xb7f5a7),
+        fill: am5.color(0xc8b266),
+        fillOpacity: 0.28,
+        stroke: am5.color(0x946d2a),
         strokeOpacity: 0.95,
         strokeWidth: 1.8,
         interactive: false,
       });
 
       activeSeries.mapPolygons.template.setAll({
-        fill: am5.color(0x2563eb),
+        fill: am5.color(0x2f7d4f),
         fillOpacity: 0.92,
-        stroke: am5.color(0x9de0ae),
-        strokeOpacity: 0.95,
-        strokeWidth: 1,
+        stroke: am5.color(0x1f5f3a),
+        strokeOpacity: 1,
+        strokeWidth: 1.2,
         interactive: false,
       });
 
@@ -514,11 +514,11 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-3">
-        <div className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900 px-3 py-2 text-sm text-slate-100">
+        <div className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)]">
           <span className="font-semibold">Selected province:</span>
           <span>{selectedProvince}</span>
         </div>
-        <div className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900 px-3 py-2 text-sm text-slate-100">
+        <div className="inline-flex items-center gap-2 rounded-full border border-[var(--line)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--foreground)]">
           <span className="font-semibold">Selected district:</span>
           <span>{selectedDistrict}</span>
         </div>
@@ -526,13 +526,16 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
           <button
             type="button"
             onClick={() => resetViewRef.current?.()}
-            className="rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-sm text-slate-100 hover:bg-slate-700"
+            className="rounded-full border border-[var(--brand)] bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-strong)]"
           >
             Back to provinces
           </button>
         )}
       </div>
-      <div ref={chartRef} className="w-full min-h-[560px] md:min-h-[700px] rounded-md overflow-hidden" />
+      <div
+        ref={chartRef}
+        className="w-full min-h-[560px] rounded-xl border border-[var(--line)] overflow-hidden md:min-h-[700px]"
+      />
     </div>
   );
 }

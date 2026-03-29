@@ -21,6 +21,13 @@ type CropsChartsProps = {
 export default function CropsCharts({ province, district, record }: CropsChartsProps) {
     const barRef = useRef<HTMLDivElement | null>(null);
     const pieRef = useRef<HTMLDivElement | null>(null);
+    const numFmt = useMemo(
+        () =>
+            new Intl.NumberFormat("en-PK", {
+                maximumFractionDigits: 1,
+            }),
+        []
+    );
 
     const chartRows = useMemo(() => {
         if (!record) return [] as Array<{ crop: string; value: number }>;
@@ -31,13 +38,25 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
                 crop,
                 value: typeof raw === "number" ? raw : Number.NaN,
             }))
-            .filter((item) => Number.isFinite(item.value));
+            .filter((item) => Number.isFinite(item.value))
+            .sort((a, b) => b.value - a.value);
     }, [record]);
 
     const pieRows = useMemo(
         () => chartRows.filter((row) => row.value > 0),
         [chartRows]
     );
+
+    const summary = useMemo(() => {
+        const positive = chartRows.filter((row) => row.value > 0);
+        const total = positive.reduce((sum, row) => sum + row.value, 0);
+        const topCrop = positive[0] ?? null;
+        return {
+            total,
+            topCrop,
+            availableCrops: chartRows.length,
+        };
+    }, [chartRows]);
 
     useEffect(() => {
         const barElement = barRef.current;
@@ -90,6 +109,19 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
             })
         );
 
+        xAxis.get("renderer").grid.template.setAll({
+            strokeOpacity: 0.08,
+        });
+
+        yAxis.get("renderer").labels.template.setAll({
+            fill: am5.color(0x405348),
+        });
+
+        yAxis.get("renderer").grid.template.setAll({
+            stroke: am5.color(0xcfd4c4),
+            strokeOpacity: 0.4,
+        });
+
         const barSeries = barChart.series.push(
             am5xy.ColumnSeries.new(barRoot, {
                 name: "Crop Value",
@@ -98,18 +130,32 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
                 valueYField: "value",
                 categoryXField: "crop",
                 tooltip: am5.Tooltip.new(barRoot, {
-                    labelText: "{categoryX}: {valueY}",
+                    labelText: "{categoryX}: {valueY.formatNumber('#,###.0')}",
                 }),
             })
         );
 
         barSeries.columns.template.setAll({
-            fill: am5.color(0x22c55e),
-            stroke: am5.color(0x166534),
+            fill: am5.color(0x2f7d4f),
+            stroke: am5.color(0x1f5f3a),
             strokeWidth: 1,
             cornerRadiusTL: 5,
             cornerRadiusTR: 5,
         });
+
+        barChart.set("colors", am5.ColorSet.new(barRoot, {
+            colors: [
+                am5.color(0x2f7d4f),
+                am5.color(0xc78c3a),
+                am5.color(0x4e8f69),
+                am5.color(0x8ca36a),
+                am5.color(0xa8793a),
+            ],
+            passOptions: {
+                lightness: 0,
+                hue: 0,
+            },
+        }));
 
         xAxis.data.setAll(chartRows);
         barSeries.data.setAll(chartRows);
@@ -131,19 +177,36 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
                 valueField: "value",
                 categoryField: "crop",
                 legendLabelText: "{category}",
-                legendValueText: "{value}",
+                legendValueText: "{value.formatNumber('#,###.0')}",
             })
         );
 
         pieSeries.slices.template.setAll({
-            tooltipText: "{category}: {value}",
-            stroke: am5.color(0x0f172a),
+            tooltipText: "{category}: {value.formatNumber('#,###.0')}",
+            stroke: am5.color(0xf9f8f2),
             strokeWidth: 1,
         });
 
         pieSeries.labels.template.setAll({
             fontSize: 11,
+            fill: am5.color(0x2a3a2d),
         });
+
+        pieChart.set("colors", am5.ColorSet.new(pieRoot, {
+            colors: [
+                am5.color(0x2f7d4f),
+                am5.color(0xc78c3a),
+                am5.color(0x4f8d65),
+                am5.color(0x8a9e67),
+                am5.color(0xa37235),
+                am5.color(0x50765b),
+                am5.color(0xd0b575),
+            ],
+            passOptions: {
+                lightness: 0,
+                hue: 0,
+            },
+        }));
 
         const legend = pieChart.children.push(
             am5.Legend.new(pieRoot, {
@@ -169,10 +232,10 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
     }, [chartRows, pieRows]);
 
     return (
-        <section className="rounded-xl border border-slate-700 bg-slate-900/70 p-4 text-slate-100">
+        <section className="glass-card p-4 text-[var(--foreground)] md:p-5">
             <div className="mb-3">
-                <h2 className="text-lg font-semibold">District Crop Insights</h2>
-                <p className="text-sm text-slate-300">
+                <h2 className="section-title text-2xl font-semibold">District Crop Insights</h2>
+                <p className="text-sm text-[var(--muted)]">
                     {district && province
                         ? `${district}, ${province} (Year ${record?.Year ?? "2000-01"})`
                         : "Select a district on the map to view crop breakdown."}
@@ -180,19 +243,36 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
             </div>
 
             {district && province && record ? (
-                <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-                    <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-2">
-                        <h3 className="px-2 pt-2 text-sm font-medium text-slate-200">Bar Chart</h3>
-                        <div ref={barRef} className="h-[340px] w-full" />
+                <>
+                    <div className="kpi-grid mb-4">
+                        <article className="kpi-card">
+                            <p className="soft-label">Total Crop Value</p>
+                            <p className="kpi-value">{numFmt.format(summary.total)}</p>
+                        </article>
+                        <article className="kpi-card">
+                            <p className="soft-label">Top Crop</p>
+                            <p className="kpi-value">{summary.topCrop ? summary.topCrop.crop : "None"}</p>
+                        </article>
+                        <article className="kpi-card">
+                            <p className="soft-label">Crops With Values</p>
+                            <p className="kpi-value">{summary.availableCrops}</p>
+                        </article>
                     </div>
-                    <div className="rounded-lg border border-slate-700 bg-slate-950/70 p-2">
-                        <h3 className="px-2 pt-2 text-sm font-medium text-slate-200">Pie Chart</h3>
-                        <div ref={pieRef} className="h-[340px] w-full" />
+
+                    <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+                        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-2">
+                            <h3 className="px-2 pt-2 text-sm font-semibold text-[var(--foreground)]">Bar Chart</h3>
+                            <div ref={barRef} className="h-[340px] w-full" />
+                        </div>
+                        <div className="rounded-xl border border-[var(--line)] bg-[var(--surface)] p-2">
+                            <h3 className="px-2 pt-2 text-sm font-semibold text-[var(--foreground)]">Pie Chart</h3>
+                            <div ref={pieRef} className="h-[340px] w-full" />
+                        </div>
                     </div>
-                </div>
+                </>
             ) : (
-                <div className="rounded-lg border border-dashed border-slate-600 bg-slate-950/40 p-6 text-sm text-slate-300">
-                    No district selected yet.
+                <div className="rounded-xl border border-dashed border-[var(--line)] bg-[var(--surface)] p-6 text-sm text-[var(--muted)]">
+                    No district selected yet. Click a district on the map to unlock charts and crop insights.
                 </div>
             )}
         </section>
