@@ -6,12 +6,52 @@ import * as am5map from "@amcharts/amcharts5/map";
 import am5themes_Animated from "@amcharts/amcharts5/themes/Animated";
 import type { FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
 
+type DistrictFeature = {
+  properties?: { name?: string; name_en?: string };
+  geometry: Geometry;
+};
+
+function pointInRing(point: [number, number], ring: Array<[number, number]>): boolean {
+  const [x, y] = point;
+  let inside = false;
+
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i];
+    const [xj, yj] = ring[j];
+
+    const intersects =
+      yi > y !== yj > y &&
+      x < ((xj - xi) * (y - yi)) / (yj - yi + Number.EPSILON) + xi;
+
+    if (intersects) inside = !inside;
+  }
+
+  return inside;
+}
+
+function pointInDistrict(point: [number, number], feature: DistrictFeature): boolean {
+  if (feature.geometry.type !== "Polygon") return false;
+
+  const rings = feature.geometry.coordinates as Array<Array<[number, number]>>;
+  if (!rings.length) return false;
+
+  // First ring is shell; remaining rings are holes.
+  if (!pointInRing(point, rings[0])) return false;
+
+  for (let i = 1; i < rings.length; i++) {
+    if (pointInRing(point, rings[i])) return false;
+  }
+
+  return true;
+}
+
 export default function PakistanMap() {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<am5.Root | null>(null);
 
   useEffect(() => {
     let isMounted = true;
+    let hasFitted = false;
 
     const initChart = async () => {
       const chartElement = chartRef.current;
@@ -109,6 +149,7 @@ export default function PakistanMap() {
           interactive: true,
         })
       );
+      const polygonByDistrict = new Map<string, am5map.MapPolygon>();
 
       districtSeries.mapPolygons.template.setAll({
         fill: am5.color(0x74b266),
@@ -138,43 +179,63 @@ export default function PakistanMap() {
         strokeWidth: 1.35,
       });
 
-      districtSeries.mapPolygons.template.events.on("click", (ev) => {
+      districtSeries.events.on("datavalidated", () => {
+        polygonByDistrict.clear();
+        districtSeries.mapPolygons.each((polygon) => {
+          const dataItem = polygon.dataItem as
+            | {
+              dataContext?: {
+                name?: string;
+                name_en?: string;
+                properties?: { name?: string; name_en?: string };
+              };
+            }
+            | undefined;
+
+          const districtName =
+            dataItem?.dataContext?.name ??
+            dataItem?.dataContext?.name_en ??
+            dataItem?.dataContext?.properties?.name ??
+            dataItem?.dataContext?.properties?.name_en ??
+            "";
+
+          if (districtName) {
+            polygonByDistrict.set(districtName, polygon);
+          }
+        });
+      });
+
+      chart.chartContainer.events.on("click", (ev) => {
+        const localPoint = chart.seriesContainer.toLocal(ev.point);
+        const geoPoint = chart.invert(localPoint);
+        const clickPoint: [number, number] = [geoPoint.longitude, geoPoint.latitude];
+
+        const selected = (districtsGeoJSON.features as DistrictFeature[]).find((feature) =>
+          pointInDistrict(clickPoint, feature)
+        );
+
+        if (!selected) return;
+
+        const districtName =
+          selected.properties?.name_en ?? selected.properties?.name ?? "Unknown district";
+
         districtSeries.mapPolygons.each((polygon) => {
           polygon.set("active", false);
         });
-        ev.target.set("active", true);
-
-        const dataItem = ev.target.dataItem as
-          | {
-            dataContext?: {
-              name?: string;
-              name_en?: string;
-              properties?: { name?: string; name_en?: string };
-            };
-          }
-          | undefined;
-
-        const districtName =
-          dataItem?.dataContext?.name ??
-          dataItem?.dataContext?.name_en ??
-          dataItem?.dataContext?.properties?.name ??
-          dataItem?.dataContext?.properties?.name_en ??
-          "Unknown district";
+        polygonByDistrict.get(districtName)?.set("active", true);
 
         console.log("District clicked:", districtName);
       });
 
       const fitToPakistan = () => {
-        if (!isMounted) return;
+        if (!isMounted || hasFitted) return;
+        hasFitted = true;
 
         chart.zoomToGeoBounds(districtBounds, 0);
       };
 
-      // Ensure fit runs regardless of validation/render timing order.
+      // Fit once after data validation; repeated calls can over-zoom.
       districtSeries.events.on("datavalidated", fitToPakistan);
-      setTimeout(fitToPakistan, 0);
-      setTimeout(fitToPakistan, 120);
-      setTimeout(fitToPakistan, 400);
     };
 
     initChart().catch(console.error);
