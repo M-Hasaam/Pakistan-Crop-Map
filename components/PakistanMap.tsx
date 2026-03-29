@@ -6,10 +6,14 @@ import * as am5map from "@amcharts/amcharts5/map";
 import am5themes_Animated from "@amcharts/amcharts5/themes/Animated";
 import type { FeatureCollection, GeoJsonProperties, Geometry } from "geojson";
 
-type DistrictFeature = {
-  properties?: { name?: string; name_en?: string };
+type MapFeature = {
+  id?: string | number;
+  properties?: GeoJsonProperties;
   geometry: Geometry;
 };
+
+type DistrictFeature = MapFeature;
+type ProvinceFeature = MapFeature;
 
 function signedRingArea(ring: Array<[number, number]>): number {
   let area = 0;
@@ -76,10 +80,7 @@ function pointInRing(point: [number, number], ring: Array<[number, number]>): bo
   return inside;
 }
 
-function pointInDistrict(point: [number, number], feature: DistrictFeature): boolean {
-  if (feature.geometry.type !== "Polygon") return false;
-
-  const rings = feature.geometry.coordinates as Array<Array<[number, number]>>;
+function pointInPolygonRings(point: [number, number], rings: Array<Array<[number, number]>>): boolean {
   if (!rings.length) return false;
 
   // First ring is shell; remaining rings are holes.
@@ -92,9 +93,99 @@ function pointInDistrict(point: [number, number], feature: DistrictFeature): boo
   return true;
 }
 
+function pointInFeature(point: [number, number], feature: MapFeature): boolean {
+  if (feature.geometry.type === "Polygon") {
+    return pointInPolygonRings(
+      point,
+      feature.geometry.coordinates as Array<Array<[number, number]>>
+    );
+  }
+
+  if (feature.geometry.type === "MultiPolygon") {
+    const polygons = feature.geometry.coordinates as Array<Array<Array<[number, number]>>>;
+    return polygons.some((polygon) => pointInPolygonRings(point, polygon));
+  }
+
+  return false;
+}
+
+function featureFirstPoint(feature: MapFeature): [number, number] | null {
+  if (feature.geometry.type === "Polygon") {
+    return (feature.geometry.coordinates as Array<Array<[number, number]>>)[0]?.[0] ?? null;
+  }
+
+  if (feature.geometry.type === "MultiPolygon") {
+    return (
+      (feature.geometry.coordinates as Array<Array<Array<[number, number]>>>)[0]?.[0]?.[0] ?? null
+    );
+  }
+
+  return null;
+}
+
+function featureName(feature: MapFeature, fallback: string): string {
+  const props = feature.properties ?? {};
+  const nameEn = typeof props.name_en === "string" ? props.name_en : "";
+  const name = typeof props.name === "string" ? props.name : "";
+  return nameEn || name || fallback;
+}
+
+type GeoBounds = {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+};
+
+function padGeoBounds(bounds: GeoBounds, ratio: number): GeoBounds {
+  const width = bounds.right - bounds.left;
+  const height = bounds.top - bounds.bottom;
+
+  return {
+    left: bounds.left - width * ratio,
+    right: bounds.right + width * ratio,
+    top: bounds.top + height * ratio,
+    bottom: bounds.bottom - height * ratio,
+  };
+}
+
+function toFeatureCollection(
+  features: MapFeature[]
+): FeatureCollection<Geometry, GeoJsonProperties> {
+  return {
+    type: "FeatureCollection",
+    features: features.map((feature) => ({
+      type: "Feature",
+      id: feature.id,
+      properties: feature.properties ?? {},
+      geometry: feature.geometry,
+    })),
+  };
+}
+
+function districtsInsideProvince(
+  districts: DistrictFeature[],
+  province: ProvinceFeature
+): DistrictFeature[] {
+  return districts.filter((district) => {
+    const districtBounds = am5map.getGeoBounds(district.geometry as GeoJSON.Geometry);
+    const centerPoint: [number, number] = [
+      (districtBounds.left + districtBounds.right) / 2,
+      (districtBounds.top + districtBounds.bottom) / 2,
+    ];
+
+    if (pointInFeature(centerPoint, province)) return true;
+
+    const fallbackPoint = featureFirstPoint(district);
+    return fallbackPoint ? pointInFeature(fallbackPoint, province) : false;
+  });
+}
+
 export default function PakistanMap() {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<am5.Root | null>(null);
+  const resetViewRef = useRef<(() => void) | null>(null);
+  const [selectedProvince, setSelectedProvince] = useState("None");
   const [selectedDistrict, setSelectedDistrict] = useState("None");
 
   useEffect(() => {
@@ -141,11 +232,27 @@ export default function PakistanMap() {
       };
       const provincesGeoJSON: FeatureCollection<Geometry, GeoJsonProperties> = {
         type: "FeatureCollection",
-        features: rawProvincesGeoJSON.features.map((feature) => ({
-          ...feature,
-          geometry: normalizeGeometry(feature.geometry),
-        })),
+        features: rawProvincesGeoJSON.features.map((feature, index) => {
+          const props = feature.properties ?? {};
+          const provinceName =
+            (typeof props.name_en === "string" && props.name_en) ||
+            (typeof props.name === "string" && props.name) ||
+            `Province-${index + 1}`;
+
+          return {
+            ...feature,
+            id: String(index + 1),
+            geometry: normalizeGeometry(feature.geometry),
+            properties: {
+              ...props,
+              name: provinceName,
+              name_en: provinceName,
+            },
+          };
+        }),
       };
+      const districtFeatures = districtsGeoJSON.features as DistrictFeature[];
+      const provinceFeatures = provincesGeoJSON.features as ProvinceFeature[];
       const districtGeometryCollection: GeoJSON.GeometryCollection = {
         type: "GeometryCollection",
         geometries: districtsGeoJSON.features
@@ -153,15 +260,7 @@ export default function PakistanMap() {
           .filter((geometry): geometry is GeoJSON.Geometry => Boolean(geometry)),
       };
       const districtBounds = am5map.getGeoBounds(districtGeometryCollection);
-      const districtBoundsWidth = districtBounds.right - districtBounds.left;
-      const districtBoundsHeight = districtBounds.top - districtBounds.bottom;
-      const boundsPaddingRatio = 0.28;
-      const paddedDistrictBounds = {
-        left: districtBounds.left - districtBoundsWidth * boundsPaddingRatio,
-        right: districtBounds.right + districtBoundsWidth * boundsPaddingRatio,
-        top: districtBounds.top + districtBoundsHeight * boundsPaddingRatio,
-        bottom: districtBounds.bottom - districtBoundsHeight * boundsPaddingRatio,
-      };
+      const paddedDistrictBounds = padGeoBounds(districtBounds, 0.28);
       const emptyGeoJSON: FeatureCollection<Geometry, GeoJsonProperties> = {
         type: "FeatureCollection",
         features: [],
@@ -197,17 +296,17 @@ export default function PakistanMap() {
         })
       );
 
-      const districtSeries = chart.series.push(
+      const provinceSeries = chart.series.push(
         am5map.MapPolygonSeries.new(root, {
-          geoJSON: districtsGeoJSON,
-          interactive: false,
+          geoJSON: provincesGeoJSON,
+          interactive: true,
         })
       );
 
-      const provinceBorderSeries = chart.series.push(
+      const districtSeries = chart.series.push(
         am5map.MapPolygonSeries.new(root, {
-          geoJSON: provincesGeoJSON,
-          interactive: false,
+          geoJSON: emptyGeoJSON,
+          interactive: true,
         })
       );
 
@@ -227,24 +326,26 @@ export default function PakistanMap() {
 
       let hoveredDistrict: string | null = null;
       let activeDistrict: string | null = null;
+      let isProvinceDrilled = false;
+      let visibleDistrictFeatures: DistrictFeature[] = [];
+
+      provinceSeries.mapPolygons.template.setAll({
+        fill: am5.color(0x000000),
+        fillOpacity: 0,
+        stroke: am5.color(0x9de0ae),
+        strokeOpacity: 0.95,
+        strokeWidth: 1.1,
+        interactive: true,
+      });
 
       districtSeries.mapPolygons.template.setAll({
         fill: am5.color(0x111111),
         fillOpacity: 0,
         stroke: am5.color(0x9de0ae),
         strokeOpacity: 0.95,
-        strokeWidth: 0.5,
+        strokeWidth: 0.55,
         tooltipText: "",
-        interactive: false,
-      });
-
-      provinceBorderSeries.mapPolygons.template.setAll({
-        fill: am5.color(0x000000),
-        fillOpacity: 0,
-        stroke: am5.color(0x9de0ae),
-        strokeOpacity: 0.66,
-        strokeWidth: 0.85,
-        interactive: false,
+        interactive: true,
       });
 
       hoverSeries.mapPolygons.template.setAll({
@@ -265,7 +366,57 @@ export default function PakistanMap() {
         interactive: false,
       });
 
-      const findDistrictAtPoint = (ev: { point: am5.IPoint }) => {
+      const setNationalMode = () => {
+        isProvinceDrilled = false;
+        activeDistrict = null;
+        hoveredDistrict = null;
+        setSelectedProvince("None");
+        setSelectedDistrict("None");
+        visibleDistrictFeatures = [];
+        provinceSeries.set("geoJSON", provincesGeoJSON);
+        districtSeries.set("geoJSON", emptyGeoJSON);
+        hoverSeries.set("geoJSON", emptyGeoJSON);
+        activeSeries.set("geoJSON", emptyGeoJSON);
+        // Temporarily disable camera movement while debugging disappearing districts.
+      };
+
+      const setProvinceMode = (province: ProvinceFeature) => {
+        isProvinceDrilled = true;
+        const provinceDistricts = districtsInsideProvince(districtFeatures, province);
+
+        activeDistrict = null;
+        hoveredDistrict = null;
+        setSelectedDistrict("None");
+        setSelectedProvince(featureName(province, "Unknown province"));
+        visibleDistrictFeatures = provinceDistricts;
+
+        provinceSeries.set("geoJSON", emptyGeoJSON);
+        districtSeries.set("geoJSON", toFeatureCollection(provinceDistricts));
+        hoverSeries.set("geoJSON", emptyGeoJSON);
+        activeSeries.set("geoJSON", emptyGeoJSON);
+        // Temporarily disable camera movement while debugging disappearing districts.
+      };
+
+      resetViewRef.current = setNationalMode;
+
+      provinceSeries.mapPolygons.template.events.on("click", (ev) => {
+        if (isProvinceDrilled) return;
+
+        const localPoint = chart.seriesContainer.toLocal(ev.point);
+        const geoPoint = chart.invert(localPoint);
+        if (!Number.isFinite(geoPoint.longitude) || !Number.isFinite(geoPoint.latitude)) return;
+
+        const clickPoint: [number, number] = [geoPoint.longitude, geoPoint.latitude];
+        const selectedProvince = provinceFeatures.find((province) =>
+          pointInFeature(clickPoint, province)
+        );
+        if (!selectedProvince) return;
+        setProvinceMode(selectedProvince);
+      });
+
+      const findDistrictAtPoint = (ev: { point: am5.IPoint }): DistrictFeature | null => {
+        if (!isProvinceDrilled || !visibleDistrictFeatures.length) return null;
+
         const localPoint = chart.seriesContainer.toLocal(ev.point);
         const geoPoint = chart.invert(localPoint);
         if (!Number.isFinite(geoPoint.longitude) || !Number.isFinite(geoPoint.latitude)) {
@@ -273,41 +424,31 @@ export default function PakistanMap() {
         }
 
         const clickPoint: [number, number] = [geoPoint.longitude, geoPoint.latitude];
-        return (districtsGeoJSON.features as DistrictFeature[]).find((feature) =>
-          pointInDistrict(clickPoint, feature)
-        );
+        return visibleDistrictFeatures.find((feature) => pointInFeature(clickPoint, feature)) ?? null;
       };
 
-      const asGeoJson = (feature: DistrictFeature | null): FeatureCollection<Geometry, GeoJsonProperties> => ({
-        type: "FeatureCollection",
-        features: feature ? [{ type: "Feature", properties: feature.properties ?? {}, geometry: feature.geometry }] : [],
-      });
-
       chart.chartContainer.events.on("click", (ev) => {
-        const selected = findDistrictAtPoint(ev);
+        const selectedDistrict = findDistrictAtPoint(ev);
+        if (!selectedDistrict) return;
 
-        if (!selected) return;
-
-        const districtName =
-          selected.properties?.name_en ?? selected.properties?.name ?? "Unknown district";
-
+        const districtName = featureName(selectedDistrict, "Unknown district");
         activeDistrict = districtName;
-        activeSeries.set("geoJSON", asGeoJson(selected));
+        setSelectedDistrict(districtName);
+        activeSeries.set("geoJSON", toFeatureCollection([selectedDistrict]));
         if (hoveredDistrict === districtName) {
           hoverSeries.set("geoJSON", emptyGeoJSON);
         }
-        setSelectedDistrict(districtName);
-
-        console.log("District clicked:", districtName);
       });
 
       chart.chartContainer.events.on("globalpointermove", (ev) => {
+        if (!isProvinceDrilled) return;
+
         const hovered = findDistrictAtPoint(ev);
-        const districtName = hovered?.properties?.name_en ?? hovered?.properties?.name ?? null;
+        const districtName = hovered ? featureName(hovered, "Unknown district") : null;
         if (districtName === hoveredDistrict || districtName === activeDistrict) return;
 
         hoveredDistrict = districtName;
-        hoverSeries.set("geoJSON", asGeoJson(hovered ?? null));
+        hoverSeries.set("geoJSON", hovered ? toFeatureCollection([hovered]) : emptyGeoJSON);
       });
 
       chart.chartContainer.events.on("pointerout", () => {
@@ -318,18 +459,18 @@ export default function PakistanMap() {
       const fitToPakistan = () => {
         if (!isMounted || hasFitted) return;
         hasFitted = true;
-
-        chart.zoomToGeoBounds(paddedDistrictBounds, 0);
+        setNationalMode();
       };
 
       // Fit once after data validation; repeated calls can over-zoom.
-      districtSeries.events.on("datavalidated", fitToPakistan);
+      provinceSeries.events.on("datavalidated", fitToPakistan);
     };
 
     initChart().catch(console.error);
 
     return () => {
       isMounted = false;
+      resetViewRef.current = null;
       rootRef.current?.dispose();
       rootRef.current = null;
     };
@@ -337,9 +478,24 @@ export default function PakistanMap() {
 
   return (
     <div className="space-y-3">
-      <div className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900 px-3 py-2 text-sm text-slate-100">
-        <span className="font-semibold">Selected district:</span>
-        <span>{selectedDistrict}</span>
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900 px-3 py-2 text-sm text-slate-100">
+          <span className="font-semibold">Selected province:</span>
+          <span>{selectedProvince}</span>
+        </div>
+        <div className="inline-flex items-center gap-2 rounded-md border border-slate-500 bg-slate-900 px-3 py-2 text-sm text-slate-100">
+          <span className="font-semibold">Selected district:</span>
+          <span>{selectedDistrict}</span>
+        </div>
+        {selectedProvince !== "None" && (
+          <button
+            type="button"
+            onClick={() => resetViewRef.current?.()}
+            className="rounded-md border border-slate-500 bg-slate-800 px-3 py-2 text-sm text-slate-100 hover:bg-slate-700"
+          >
+            Back to provinces
+          </button>
+        )}
       </div>
       <div ref={chartRef} className="w-full min-h-[560px] md:min-h-[700px] rounded-md overflow-hidden" />
     </div>
