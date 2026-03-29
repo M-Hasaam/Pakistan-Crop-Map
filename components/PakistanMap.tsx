@@ -113,8 +113,11 @@ export default function PakistanMap() {
       });
 
       const districtsModule = await import("../data/Pakistan_Districts.json");
+      const provincesModule = await import("../data/Pakistan_Provices.json");
       const rawDistrictsGeoJSON =
         districtsModule.default as FeatureCollection<Geometry, GeoJsonProperties>;
+      const rawProvincesGeoJSON =
+        provincesModule.default as FeatureCollection<Geometry, GeoJsonProperties>;
       const districtsGeoJSON: FeatureCollection<Geometry, GeoJsonProperties> = {
         type: "FeatureCollection",
         features: rawDistrictsGeoJSON.features.map((feature, index) => {
@@ -136,6 +139,13 @@ export default function PakistanMap() {
           };
         }),
       };
+      const provincesGeoJSON: FeatureCollection<Geometry, GeoJsonProperties> = {
+        type: "FeatureCollection",
+        features: rawProvincesGeoJSON.features.map((feature) => ({
+          ...feature,
+          geometry: normalizeGeometry(feature.geometry),
+        })),
+      };
       const districtGeometryCollection: GeoJSON.GeometryCollection = {
         type: "GeometryCollection",
         geometries: districtsGeoJSON.features
@@ -145,7 +155,7 @@ export default function PakistanMap() {
       const districtBounds = am5map.getGeoBounds(districtGeometryCollection);
       const districtBoundsWidth = districtBounds.right - districtBounds.left;
       const districtBoundsHeight = districtBounds.top - districtBounds.bottom;
-      const boundsPaddingRatio = 0.18;
+      const boundsPaddingRatio = 0.28;
       const paddedDistrictBounds = {
         left: districtBounds.left - districtBoundsWidth * boundsPaddingRatio,
         right: districtBounds.right + districtBoundsWidth * boundsPaddingRatio,
@@ -194,6 +204,13 @@ export default function PakistanMap() {
         })
       );
 
+      const provinceBorderSeries = chart.series.push(
+        am5map.MapPolygonSeries.new(root, {
+          geoJSON: provincesGeoJSON,
+          interactive: false,
+        })
+      );
+
       const hoverSeries = chart.series.push(
         am5map.MapPolygonSeries.new(root, {
           geoJSON: emptyGeoJSON,
@@ -216,8 +233,17 @@ export default function PakistanMap() {
         fillOpacity: 0,
         stroke: am5.color(0x9de0ae),
         strokeOpacity: 0.95,
-        strokeWidth: 1,
+        strokeWidth: 0.5,
         tooltipText: "",
+        interactive: false,
+      });
+
+      provinceBorderSeries.mapPolygons.template.setAll({
+        fill: am5.color(0x000000),
+        fillOpacity: 0,
+        stroke: am5.color(0x9de0ae),
+        strokeOpacity: 0.66,
+        strokeWidth: 0.85,
         interactive: false,
       });
 
