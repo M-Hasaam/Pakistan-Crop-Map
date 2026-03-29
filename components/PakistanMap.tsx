@@ -11,6 +11,53 @@ type DistrictFeature = {
   geometry: Geometry;
 };
 
+function signedRingArea(ring: Array<[number, number]>): number {
+  let area = 0;
+  for (let i = 0; i < ring.length - 1; i++) {
+    const [x1, y1] = ring[i];
+    const [x2, y2] = ring[i + 1];
+    area += x1 * y2 - x2 * y1;
+  }
+  return area / 2;
+}
+
+function normalizePolygonRings(
+  rings: Array<Array<[number, number]>>
+): Array<Array<[number, number]>> {
+  return rings.map((ring, index) => {
+    if (ring.length < 4) return ring;
+    const isCCW = signedRingArea(ring) > 0;
+
+    // AMCharts/d3 map fill expects outer rings clockwise and holes counterclockwise.
+    const shouldBeCCW = index !== 0;
+    const shouldReverse = shouldBeCCW ? !isCCW : isCCW;
+
+    return shouldReverse ? [...ring].reverse() : ring;
+  });
+}
+
+function normalizeGeometry(geometry: Geometry): Geometry {
+  if (geometry.type === "Polygon") {
+    return {
+      ...geometry,
+      coordinates: normalizePolygonRings(
+        geometry.coordinates as Array<Array<[number, number]>>
+      ),
+    };
+  }
+
+  if (geometry.type === "MultiPolygon") {
+    return {
+      ...geometry,
+      coordinates: geometry.coordinates.map((rings) =>
+        normalizePolygonRings(rings as Array<Array<[number, number]>>)
+      ),
+    };
+  }
+
+  return geometry;
+}
+
 function pointInRing(point: [number, number], ring: Array<[number, number]>): boolean {
   const [x, y] = point;
   let inside = false;
@@ -80,6 +127,7 @@ export default function PakistanMap() {
           return {
             ...feature,
             id: String(nameEn),
+            geometry: normalizeGeometry(feature.geometry),
             properties: {
               ...props,
               name: nameEn,
