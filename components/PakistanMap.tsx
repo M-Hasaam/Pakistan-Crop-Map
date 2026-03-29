@@ -13,6 +13,7 @@ type DistrictSelection = {
 
 type PakistanMapProps = {
   onDistrictSelect?: (selection: DistrictSelection) => void;
+  themeMode?: "light" | "dark";
 };
 
 type MapFeature = {
@@ -201,7 +202,7 @@ function districtsInsideProvince(
   });
 }
 
-export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
+export default function PakistanMap({ onDistrictSelect, themeMode = "light" }: PakistanMapProps) {
   const chartRef = useRef<HTMLDivElement | null>(null);
   const rootRef = useRef<am5.Root | null>(null);
   const resetViewRef = useRef<(() => void) | null>(null);
@@ -298,6 +299,27 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
 
       root.setThemes([am5themes_Animated.new(root)]);
 
+      const colors =
+        themeMode === "dark"
+          ? {
+            mapBg: 0x16201c,
+            provinceStroke: 0x7db692,
+            districtStroke: 0x639f79,
+            hoverFill: 0xd6a35b,
+            hoverStroke: 0xf3c985,
+            activeFill: 0x57b37c,
+            activeStroke: 0x3f9a68,
+          }
+          : {
+            mapBg: 0xf6f3e7,
+            provinceStroke: 0x3f7b56,
+            districtStroke: 0x4a8961,
+            hoverFill: 0xc8b266,
+            hoverStroke: 0x946d2a,
+            activeFill: 0x2f7d4f,
+            activeStroke: 0x1f5f3a,
+          };
+
       const chart = root.container.children.push(
         am5map.MapChart.new(root, {
           panX: "none",
@@ -316,7 +338,7 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
       chart.chartContainer.set(
         "background",
         am5.Rectangle.new(root, {
-          fill: am5.color(0xf6f3e7),
+          fill: am5.color(colors.mapBg),
           fillOpacity: 1,
         })
       );
@@ -358,7 +380,7 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
       provinceSeries.mapPolygons.template.setAll({
         fill: am5.color(0x000000),
         fillOpacity: 0,
-        stroke: am5.color(0x3f7b56),
+        stroke: am5.color(colors.provinceStroke),
         strokeOpacity: 0.95,
         strokeWidth: 1.2,
         interactive: true,
@@ -367,7 +389,7 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
       districtSeries.mapPolygons.template.setAll({
         fill: am5.color(0x000000),
         fillOpacity: 0,
-        stroke: am5.color(0x4a8961),
+        stroke: am5.color(colors.districtStroke),
         strokeOpacity: 0.85,
         strokeWidth: 0.65,
         tooltipText: "",
@@ -375,18 +397,18 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
       });
 
       hoverSeries.mapPolygons.template.setAll({
-        fill: am5.color(0xc8b266),
+        fill: am5.color(colors.hoverFill),
         fillOpacity: 0.28,
-        stroke: am5.color(0x946d2a),
+        stroke: am5.color(colors.hoverStroke),
         strokeOpacity: 0.95,
         strokeWidth: 1.8,
         interactive: false,
       });
 
       activeSeries.mapPolygons.template.setAll({
-        fill: am5.color(0x2f7d4f),
+        fill: am5.color(colors.activeFill),
         fillOpacity: 0.92,
-        stroke: am5.color(0x1f5f3a),
+        stroke: am5.color(colors.activeStroke),
         strokeOpacity: 1,
         strokeWidth: 1.2,
         interactive: false,
@@ -509,7 +531,7 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
       rootRef.current?.dispose();
       rootRef.current = null;
     };
-  }, []);
+  }, [themeMode]);
 
   return (
     <div className="space-y-3">
@@ -526,7 +548,7 @@ export default function PakistanMap({ onDistrictSelect }: PakistanMapProps) {
           <button
             type="button"
             onClick={() => resetViewRef.current?.()}
-            className="rounded-full border border-[var(--brand)] bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[var(--brand-strong)]"
+            className="rounded-full border border-[var(--brand)] bg-[var(--brand)] px-4 py-2 text-sm font-semibold text-[var(--surface-strong)] transition hover:bg-[var(--brand-strong)]"
           >
             Back to provinces
           </button>

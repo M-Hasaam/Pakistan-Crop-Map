@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Manrope, Fraunces } from "next/font/google";
 import "./globals.css";
 
@@ -26,8 +27,14 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${manrope.variable} ${fraunces.variable} h-full antialiased`}
+      suppressHydrationWarning
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <Script id="theme-init" strategy="beforeInteractive">
+          {`(function(){try{var saved=localStorage.getItem('theme-mode');var mode=(saved==='dark'||saved==='light')?saved:(window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.dataset.theme=mode;}catch(e){}})();`}
+        </Script>
+        {children}
+      </body>
     </html>
   );
 }

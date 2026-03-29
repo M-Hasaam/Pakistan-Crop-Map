@@ -13,12 +13,13 @@ type DistrictRecord = {
 } & Record<string, CropValue | string>;
 
 type CropsChartsProps = {
+    themeMode?: "light" | "dark";
     province: string | null;
     district: string | null;
     record: DistrictRecord | null;
 };
 
-export default function CropsCharts({ province, district, record }: CropsChartsProps) {
+export default function CropsCharts({ themeMode = "light", province, district, record }: CropsChartsProps) {
     const barRef = useRef<HTMLDivElement | null>(null);
     const pieRef = useRef<HTMLDivElement | null>(null);
     const numFmt = useMemo(
@@ -71,6 +72,33 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
 
         if (!chartRows.length) return;
 
+        const colors =
+            themeMode === "dark"
+                ? {
+                    yLabel: 0xbad0c1,
+                    xLabel: 0xc9ddd0,
+                    grid: 0x31433a,
+                    barFill: 0x5ab47f,
+                    barStroke: 0x449a6a,
+                    pieStroke: 0x16201c,
+                    pieLabel: 0xd7eadf,
+                    legendLabel: 0xd8e9df,
+                    legendValue: 0xaec4b8,
+                    set: [0x5ab47f, 0xd6a35b, 0x74c091, 0x99b57c, 0xc48b46, 0x5d8f72, 0xe4bf82],
+                }
+                : {
+                    yLabel: 0x405348,
+                    xLabel: 0x33463b,
+                    grid: 0xcfd4c4,
+                    barFill: 0x2f7d4f,
+                    barStroke: 0x1f5f3a,
+                    pieStroke: 0xf9f8f2,
+                    pieLabel: 0x2a3a2d,
+                    legendLabel: 0x2a3a2d,
+                    legendValue: 0x4d5f53,
+                    set: [0x2f7d4f, 0xc78c3a, 0x4e8f69, 0x8ca36a, 0xa8793a, 0x50765b, 0xd0b575],
+                };
+
         const barRoot = am5.Root.new(barElement);
         barRoot.setThemes([am5themes_Animated.new(barRoot)]);
 
@@ -101,6 +129,7 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
             centerX: am5.p100,
             paddingTop: 8,
             fontSize: 11,
+            fill: am5.color(colors.xLabel),
         });
 
         const yAxis = barChart.yAxes.push(
@@ -114,11 +143,11 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
         });
 
         yAxis.get("renderer").labels.template.setAll({
-            fill: am5.color(0x405348),
+            fill: am5.color(colors.yLabel),
         });
 
         yAxis.get("renderer").grid.template.setAll({
-            stroke: am5.color(0xcfd4c4),
+            stroke: am5.color(colors.grid),
             strokeOpacity: 0.4,
         });
 
@@ -136,21 +165,15 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
         );
 
         barSeries.columns.template.setAll({
-            fill: am5.color(0x2f7d4f),
-            stroke: am5.color(0x1f5f3a),
+            fill: am5.color(colors.barFill),
+            stroke: am5.color(colors.barStroke),
             strokeWidth: 1,
             cornerRadiusTL: 5,
             cornerRadiusTR: 5,
         });
 
         barChart.set("colors", am5.ColorSet.new(barRoot, {
-            colors: [
-                am5.color(0x2f7d4f),
-                am5.color(0xc78c3a),
-                am5.color(0x4e8f69),
-                am5.color(0x8ca36a),
-                am5.color(0xa8793a),
-            ],
+            colors: colors.set.map((c) => am5.color(c)),
             passOptions: {
                 lightness: 0,
                 hue: 0,
@@ -183,25 +206,17 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
 
         pieSeries.slices.template.setAll({
             tooltipText: "{category}: {value.formatNumber('#,###.0')}",
-            stroke: am5.color(0xf9f8f2),
+            stroke: am5.color(colors.pieStroke),
             strokeWidth: 1,
         });
 
         pieSeries.labels.template.setAll({
             fontSize: 11,
-            fill: am5.color(0x2a3a2d),
+            fill: am5.color(colors.pieLabel),
         });
 
         pieChart.set("colors", am5.ColorSet.new(pieRoot, {
-            colors: [
-                am5.color(0x2f7d4f),
-                am5.color(0xc78c3a),
-                am5.color(0x4f8d65),
-                am5.color(0x8a9e67),
-                am5.color(0xa37235),
-                am5.color(0x50765b),
-                am5.color(0xd0b575),
-            ],
+            colors: colors.set.map((c) => am5.color(c)),
             passOptions: {
                 lightness: 0,
                 hue: 0,
@@ -218,6 +233,14 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
             })
         );
 
+        legend.labels.template.setAll({
+            fill: am5.color(colors.legendLabel),
+        });
+
+        legend.valueLabels.template.setAll({
+            fill: am5.color(colors.legendValue),
+        });
+
         const pieData = pieRows.length ? pieRows : [{ crop: "No positive values", value: 1 }];
         pieSeries.data.setAll(pieData);
         legend.data.setAll(pieSeries.dataItems);
@@ -229,7 +252,7 @@ export default function CropsCharts({ province, district, record }: CropsChartsP
             barRoot.dispose();
             pieRoot.dispose();
         };
-    }, [chartRows, pieRows]);
+    }, [chartRows, pieRows, themeMode]);
 
     return (
         <section className="glass-card p-4 text-[var(--foreground)] md:p-5">

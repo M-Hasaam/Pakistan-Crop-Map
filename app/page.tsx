@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import cropsData from "../data/crops_2000_01.json";
 import CropsCharts from "../components/CropsCharts";
@@ -28,10 +28,31 @@ type DistrictSelection = {
 const dataset = cropsData as CropsDataset;
 
 export default function Home() {
+  const [themeMode, setThemeMode] = useState<"light" | "dark">("light");
   const [selection, setSelection] = useState<DistrictSelection>({
     province: null,
     district: null,
   });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const saved = window.localStorage.getItem("theme-mode");
+    if (saved === "light" || saved === "dark") {
+      setThemeMode(saved);
+      root.dataset.theme = saved;
+      return;
+    }
+
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const initial = prefersDark ? "dark" : "light";
+    setThemeMode(initial);
+    root.dataset.theme = initial;
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = themeMode;
+    window.localStorage.setItem("theme-mode", themeMode);
+  }, [themeMode]);
 
   const districtRecord = useMemo(() => {
     if (!selection.province || !selection.district) return null;
@@ -63,11 +84,47 @@ export default function Home() {
               Select a province, then a district on the map to view crop values with dedicated charts.
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-right text-sm">
-            <div className="meta-chip">Year 2000-01</div>
-            <div className="meta-chip">District Level</div>
-            <div className="meta-chip">AMCharts Map</div>
-            <div className="meta-chip">AMCharts Insights</div>
+          <div className="flex flex-col items-end gap-2">
+            <button
+              type="button"
+              className="theme-toggle theme-toggle--switch"
+              onClick={() => setThemeMode((v) => (v === "dark" ? "light" : "dark"))}
+              aria-pressed={themeMode === "dark"}
+              aria-label={`Switch to ${themeMode === "dark" ? "light" : "dark"} mode`}
+              title={`Switch to ${themeMode === "dark" ? "light" : "dark"} mode`}
+            >
+              <span className="theme-toggle__label">{themeMode === "dark" ? "Dark" : "Light"}</span>
+              <span className="theme-toggle__track" aria-hidden="true">
+                <span className="theme-toggle__thumb">
+                  {themeMode === "dark" ? (
+                    <svg className="theme-toggle__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <path
+                        d="M20.5 13.2A8.5 8.5 0 1 1 10.8 3.5a7 7 0 0 0 9.7 9.7Z"
+                        stroke="currentColor"
+                        strokeWidth="1.7"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  ) : (
+                    <svg className="theme-toggle__icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                      <circle cx="12" cy="12" r="4.25" stroke="currentColor" strokeWidth="1.7" />
+                      <path d="M12 2.5V5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                      <path d="M12 19V21.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                      <path d="M2.5 12H5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                      <path d="M19 12H21.5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+                    </svg>
+                  )}
+                </span>
+              </span>
+            </button>
+
+            <div className="grid grid-cols-2 gap-2 text-right text-sm">
+              <div className="meta-chip">Year 2000-01</div>
+              <div className="meta-chip">District Level</div>
+              <div className="meta-chip">AMCharts Map</div>
+              <div className="meta-chip">AMCharts Insights</div>
+            </div>
           </div>
         </div>
 
@@ -88,11 +145,12 @@ export default function Home() {
       </header>
 
       <section className="glass-card rise-in p-4 md:p-5">
-        <PakistanMap onDistrictSelect={setSelection} />
+        <PakistanMap onDistrictSelect={setSelection} themeMode={themeMode} />
       </section>
 
       <section className="rise-in">
         <CropsCharts
+          themeMode={themeMode}
           province={selection.province}
           district={selection.district}
           record={districtRecord}
